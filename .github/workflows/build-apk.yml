@@ -5,7 +5,7 @@ on:
   workflow_dispatch:
 
 env:
-  FLET_CLI_NO_RICH_OUTPUT: 1 # 禁用富文本动画，防止云端非交互终端卡死
+  FLET_CLI_NO_RICH_OUTPUT: 1
 
 jobs:
   build:
@@ -25,6 +25,11 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+
+      - name: 预装官方 Flutter 环境
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
 
       - name: 安装 Flet 及打包依赖
         run: |
