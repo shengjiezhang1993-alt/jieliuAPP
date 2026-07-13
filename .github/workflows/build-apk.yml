@@ -1,12 +1,15 @@
 name: Build Flet APK
 on:
   push:
-    branches: [ main, master ] # 每次推送到 main 或 master 分支时自动触发
-  workflow_dispatch:           # 允许在网页上手动点击按钮触发打包
+    branches: [ main, master ]
+  workflow_dispatch:
+
+env:
+  FLET_CLI_NO_RICH_OUTPUT: 1 # 禁用富文本动画，防止云端非交互终端卡死
 
 jobs:
   build:
-    runs-on: ubuntu-latest     # 使用 GitHub 提供的 Linux 虚拟服务器
+    runs-on: ubuntu-latest
 
     steps:
       - name: 拉取项目代码
@@ -29,12 +32,9 @@ jobs:
           pip install flet
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
-      - name: 接受 Android 许可证条款
-        run: yes | sdkmanager --licenses || true
-
       - name: 执行 Flet 编译 APK
         run: |
-          flet build apk --verbose
+          flet build apk --yes --verbose
 
       - name: 上传打包好的 APK 产物
         uses: actions/upload-artifact@v4
