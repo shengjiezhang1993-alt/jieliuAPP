@@ -1,10 +1,15 @@
 import json
 import os
 
-DB_FILE = "budget_data.json"
+DATA_DIR = os.environ.get("FLET_APP_STORAGE_DATA_DIR", os.getcwd())
+DB_FILE = os.path.join(DATA_DIR, "budget_data.json")
 
 def init_db():
     """初始化本地数据文件"""
+    # 如果目录不存在（某些安卓系统特殊情况），先创建目录
+    if not os.path.exists(DATA_DIR):
+        os.makedirs(DATA_DIR, exist_ok=True)
+        
     if not os.path.exists(DB_FILE):
         default_data = {
             "balance": 0.0,
