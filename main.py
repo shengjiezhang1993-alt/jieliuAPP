@@ -247,6 +247,7 @@ def main(page: ft.Page):
 
         # --- 主界面布局 ---
         page.add(
+            ft.Container(height=100),
             # 顶部资产 & 额度卡片
             ft.Container(
                 content=ft.Column([

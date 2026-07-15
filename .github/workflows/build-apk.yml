@@ -39,7 +39,7 @@ jobs:
 
       - name: 执行 Flet 编译 APK
         run: |
-          yes | flet build apk --verbose
+          yes | flet build apk --product "节流" --verbose
 
       - name: 上传打包好的 APK 产物
         uses: actions/upload-artifact@v4
