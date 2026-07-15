@@ -18,17 +18,107 @@ def main(page: ft.Page):
         
         records_list = ft.ListView(expand=1, spacing=10, padding=20)
         
+        # --- 新增：修改/删除账单的状态和控件 ---
+        current_editing_id = None  # 用于记录当前正在编辑的账单 ID
+        
+        edit_type_radio = ft.RadioGroup(content=ft.Row([ft.Radio(value="支出", label="支出"), ft.Radio(value="收入", label="收入")]))
+        edit_category_input = ft.TextField(label="分类(如: 餐饮、交通)", width=300)
+        edit_amount_input = ft.TextField(label="金额", prefix=ft.Text("￥"), keyboard_type=ft.KeyboardType.NUMBER, width=300)
+        edit_remark_input = ft.TextField(label="备注", width=300)
+        
+        def save_edit_bill(e):
+            """保存修改"""
+            nonlocal current_editing_id
+            if not edit_amount_input.value or not edit_category_input.value:
+                return
+            try:
+                # 简单校验金额是否为数字
+                float(edit_amount_input.value)
+            except ValueError:
+                return
+                
+            db.update_record(
+                record_id=current_editing_id,
+                record_type=edit_type_radio.value,
+                category=edit_category_input.value,
+                amount=edit_amount_input.value,
+                remark=edit_remark_input.value
+            )
+            edit_dialog.open = False
+            refresh_ui()
+            
+        def open_confirm_delete(e):
+            """弹出删除确认小窗"""
+            confirm_delete_dialog.open = True
+            page.update()
+            
+        def confirm_delete_click(e):
+            """用户确认删除"""
+            nonlocal current_editing_id
+            db.delete_record(current_editing_id)
+            confirm_delete_dialog.open = False
+            edit_dialog.open = False
+            refresh_ui()
+
+        # 弹窗 D：防误触删除确认弹窗
+        confirm_delete_dialog = ft.AlertDialog(
+            title=ft.Text("确认删除"),
+            content=ft.Text("确定要删除这条账单记录吗？此操作无法恢复。"),
+            actions=[
+                ft.TextButton("否", on_click=lambda e: setattr(confirm_delete_dialog, "open", False) or page.update()),
+                ft.Button("是", on_click=confirm_delete_click, bgcolor=ft.Colors.RED, color=ft.Colors.WHITE)
+            ]
+        )
+        page.overlay.append(confirm_delete_dialog)
+        
+        # 弹窗 C：修改账单弹窗 (包含左下角删除、右下角取消和保存)
+        edit_dialog = ft.AlertDialog(
+            title=ft.Text("修改账单"),
+            content=ft.Column([edit_type_radio, edit_category_input, edit_amount_input, edit_remark_input], tight=True, spacing=15),
+            actions=[
+                ft.Row(
+                    [
+                        # 左边放置显眼的红色删除按钮
+                        ft.TextButton("删除账单", on_click=open_confirm_delete, style=ft.ButtonStyle(color=ft.Colors.RED_700)),
+                        # 右边放置常规的取消与保存
+                        ft.Row(
+                            [
+                                ft.TextButton("取消", on_click=lambda e: setattr(edit_dialog, "open", False) or page.update()),
+                                ft.Button("保存修改", on_click=save_edit_bill, bgcolor=ft.Colors.BLUE, color=ft.Colors.WHITE)
+                            ],
+                            spacing=10
+                        )
+                    ],
+                    alignment=ft.MainAxisAlignment.SPACE_BETWEEN
+                )
+            ]
+        )
+        page.overlay.append(edit_dialog)
+        
+        def open_edit_dialog(record):
+            """打开修改弹窗并回显数据"""
+            nonlocal current_editing_id
+            current_editing_id = record["id"]
+            edit_type_radio.value = record["type"]
+            edit_category_input.value = record["category"]
+            edit_amount_input.value = str(record["amount"])
+            edit_remark_input.value = record["remark"]
+            edit_dialog.open = True
+            page.update()
+
+        # --- 刷新 UI 逻辑 ---
         def refresh_ui():
             """刷新整个界面的数据呈现"""
             current_data = db.get_data()
             
-            # 1. 【必须最先计算】计算本月总支出
+            # 1. 计算本月总支出
             current_month = datetime.now().strftime("%Y-%m")
             total_expense = 0.0
             for r in current_data["records"]:
                 if r["type"] == "支出" and r["date"].startswith(current_month):
                     total_expense += r["amount"]
-            # 2. 【有了总支出后，再算额度】大字展示“剩余额度”
+                    
+            # 2. 大字展示“剩余额度”
             budget = current_data.get("budget", 0.0)
             remaining_budget = budget - total_expense
             
@@ -37,7 +127,6 @@ def main(page: ft.Page):
             
             # 3. 刷新小字额度看板提示
             budget_text.value = f"本月已用: ￥{total_expense:.2f} | 剩余额度: ￥{remaining_budget:.2f} (总: ￥{budget:.2f})"
-            
             
             if budget > 0:
                 progress_value = total_expense / budget
@@ -59,11 +148,27 @@ def main(page: ft.Page):
                         ),
                         title=ft.Text(f"{r['category']} - {r['remark']}"),
                         subtitle=ft.Text(r['date']),
-                        trailing=ft.Text(
-                            f"{'+' if is_income else '-'}{r['amount']:.2f}",
-                            weight=ft.FontWeight.BOLD,
-                            size=16,
-                            color=ft.Colors.GREEN if is_income else ft.Colors.RED
+                        # 核心改动：在 trailing 放置金额和编辑图标
+                        trailing=ft.Row(
+                            [
+                                ft.Text(
+                                    f"{'+' if is_income else '-'}{r['amount']:.2f}",
+                                    weight=ft.FontWeight.BOLD,
+                                    size=16,
+                                    color=ft.Colors.GREEN if is_income else ft.Colors.RED
+                                ),
+                                ft.IconButton(
+                                    icon=ft.Icons.EDIT_OUTLINED,
+                                    icon_color=ft.Colors.BLUE_GREY_400,
+                                    icon_size=20,
+                                    tooltip="修改/删除",
+                                    # 用 record=r 闭包绑定当前账单
+                                    on_click=lambda e, record=r: open_edit_dialog(record)
+                                )
+                            ],
+                            alignment=ft.MainAxisAlignment.END,
+                            tight=True,
+                            spacing=5
                         )
                     )
                 )
@@ -79,6 +184,11 @@ def main(page: ft.Page):
         def save_new_bill(e):
             if not amount_input.value or not category_input.value:
                 return
+            try:
+                float(amount_input.value)
+            except ValueError:
+                return
+                
             db.add_record(
                 record_type=type_radio.value,
                 category=category_input.value,
@@ -114,7 +224,7 @@ def main(page: ft.Page):
             refresh_ui()
 
         budget_dialog = ft.AlertDialog(
-            modal=True, # 强行拦截，必须输入或点取消
+            modal=True,
             title=ft.Text("💰 设置本月预算额度"),
             content=ft.Column([
                 ft.Text("进入了新的月份或首次使用，请设置本月的消费预警额度：", size=14, color=ft.Colors.GREY_600),
@@ -127,11 +237,10 @@ def main(page: ft.Page):
         )
         page.overlay.append(budget_dialog)
 
-        # --- 自动检测：是否需要弹出额度输入提示（如每月1号或新月份首次打开） ---
+        # --- 自动检测：是否需要弹出额度输入提示 ---
         def check_monthly_budget_prompt():
             current_data = db.get_data()
             this_month = datetime.now().strftime("%Y-%m")
-            # 如果保存的预算月份和当前月份不一致，说明跨月了（或者首次使用），自动弹窗提醒
             if current_data.get("budget_month") != this_month:
                 budget_dialog.open = True
                 page.update()
@@ -167,9 +276,7 @@ def main(page: ft.Page):
         # 首次加载与检测
         refresh_ui()
         check_monthly_budget_prompt()
-
-    
-        page.update() # 原本代码的结尾
+        page.update()
   
     except Exception as e:
         page.controls.clear()
@@ -186,5 +293,5 @@ def main(page: ft.Page):
         )
         page.update()
 
-# 这一行确保在文件最底部、最左边顶格写
-ft.app(main)  
+# 这一行指定了静态资源目录 assets
+ft.app(target=main, assets_dir="assets")
